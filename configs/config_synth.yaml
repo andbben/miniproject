@@ -1,0 +1,108 @@
+# =============================================================
+#  Disaster ARM - DEMO CONFIG  (CPU-friendly, fast synthetic run)
+#  Use this for class demos and testing without a GPU.
+#  Full training config is in config.yaml
+# =============================================================
+
+project:
+  name: "Disaster ARM - Satellite Damage Assessment (Demo)"
+  version: "1.0.0"
+  seed: 42
+
+# ---- Data ----
+data:
+  xbd_root: "./data/xbd"
+  noaa_api_base: "https://storms.ngs.noaa.gov"
+  image_size: 64           # ← reduced from 256 (biggest speed win)
+  patch_size: 16
+  num_workers: 0           # ← 0 = no multiprocessing (faster on CPU/Windows)
+  train_split: 0.80
+  val_split: 0.10
+  test_split: 0.10
+
+# ---- VQ-VAE ----
+vqvae:
+  in_channels: 3
+  hidden_channels: 64      # ← reduced from 128
+  residual_channels: 16    # ← reduced from 32
+  num_residual_layers: 1   # ← reduced from 2
+  embedding_dim: 32        # ← reduced from 64
+  num_embeddings: 128      # ← reduced from 512
+  commitment_cost: 0.25
+  decay: 0.99
+  latent_h: 4              # ← 64/16 = 4  (matches smaller image)
+  latent_w: 4
+
+# ---- Autoregressive (PixelCNN++) ----
+arm:
+  num_layers: 4            # ← reduced from 12
+  hidden_channels: 64      # ← reduced from 256
+  num_mix: 5
+  context_dim: 32          # ← reduced from 128
+  num_classes: 128         # ← must match vqvae.num_embeddings
+  dropout: 0.1
+
+# ---- Siamese U-Net (Damage Assessment) ----
+damage_model:
+  encoder: "resnet34"
+  in_channels: 3
+  num_classes: 5
+  pretrained_encoder: false  # ← skip pretrained download for speed
+  dropout: 0.1
+  deep_supervision: false
+
+# ---- Training ----
+train:
+  # VQ-VAE phase  (~2-4 min on CPU)
+  vqvae_epochs: 5           # ← reduced from 50
+  vqvae_lr: 2.0e-4
+  vqvae_batch_size: 8       # ← reduced from 16
+  vqvae_weight_decay: 1.0e-5
+
+  # ARM phase  (~3-6 min on CPU)
+  arm_epochs: 5             # ← reduced from 100
+  arm_lr: 3.0e-4
+  arm_batch_size: 8         # ← reduced from 32
+  arm_weight_decay: 1.0e-4
+
+  # Damage model  (~2-4 min on CPU)
+  damage_epochs: 5          # ← reduced from 60
+  damage_lr: 1.0e-4
+  damage_batch_size: 4      # ← reduced from 8
+  damage_weight_decay: 1.0e-5
+
+  # Loss weights
+  seg_weight: 0.30
+  cls_weight: 0.70
+
+# ---- Evaluation & Metrics ----
+metrics:
+  pixel_per_meter: 0.5
+  damage_thresholds:
+    minor:    1
+    major:    2
+    destroyed: 3
+  sdi_weights:
+    no_damage: 0.0
+    minor: 0.25
+    major: 0.75
+    destroyed: 1.0
+
+# ---- Generation ----
+generate:
+  num_samples: 2            # ← reduced from 8
+  temperature: 0.9
+  top_k: 50                 # ← reduced from 100
+  disaster_types:
+    - "hurricane"
+    - "wildfire"
+    - "flood"
+    - "earthquake"
+    - "tornado"
+  output_dir: "./outputs/generated"
+
+# ---- Paths ----
+paths:
+  checkpoints: "./checkpoints"
+  logs: "./logs"
+  outputs: "./outputs"

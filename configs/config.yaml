@@ -1,0 +1,96 @@
+project:
+  name: "Disaster GAN - Satellite Damage Assessment"
+  version: "2.1.0"
+  seed: 42
+
+data:
+  xbd_root: "./data/xbd"
+  noaa_api_base: "https://storms.ngs.noaa.gov"
+  image_size: 256
+  patch_size: 64
+  num_workers: 6
+  train_split: 0.80
+  val_split: 0.10
+  test_split: 0.10
+
+gan:
+  disc_base_ch: 64
+  disc_n_scales: 2
+  lambda_adv: 1.0
+  lambda_l1: 10.0
+  lambda_fm: 10.0
+  lambda_perc: 0.1
+
+  pre_gan:
+    latent_dim: 128
+    disaster_emb_dim: 64
+    base_ch: 512
+    g_lr: 2.0e-4
+    d_lr: 4.0e-4
+    epochs: 444
+    batch_size: 16
+
+  post_gan:
+    disaster_emb_dim: 128
+    base_ch: 64
+    dropout: 0.5
+    g_lr: 2.0e-4
+    d_lr: 4.0e-4
+    epochs: 555
+    batch_size: 8
+
+damage_model:
+  architecture: "siamese_unet_transformer"
+  in_channels: 3
+  num_classes: 5
+  base_channels: 64
+  transformer_heads: 8
+  transformer_layers: 2
+  transformer_mlp_ratio: 2.0
+  dropout: 0.15
+  focal_gamma: 2.5
+  class_weights: [0.05, 1.0, 1.5, 2.0, 3.0]
+
+train:
+  damage_epochs: 60
+  damage_lr: 1.0e-4
+  damage_batch_size: 8
+  damage_weight_decay: 1.0e-5
+  damage_use_cuda_prefetch: true
+  seg_weight: 0.30
+  cls_weight: 0.70
+
+metrics:
+  pixel_per_meter: 0.5
+  damage_thresholds:
+    minor: 1
+    major: 2
+    destroyed: 3
+  sdi_weights:
+    no_damage: 0.0
+    minor: 0.25
+    major: 0.75
+    destroyed: 1.0
+
+generate:
+  num_samples: 8
+  temperature: 1.0
+  disaster_types:
+    - "hurricane"
+    - "wildfire"
+    - "flood"
+    - "earthquake"
+    - "tornado"
+  output_dir: "./outputs/generated"
+
+wandb:
+  enabled: true
+  entity: "andben_"
+  project: "Disaster Image Generation GAN"
+  mode: "online"
+  log_checkpoints: true
+
+paths:
+  checkpoints: "./checkpoints"
+  logs: "./logs"
+  outputs: "./outputs"

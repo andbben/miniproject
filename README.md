@@ -1,50 +1,150 @@
-# LVM Disaster Assessment Miniproject (VAE Segment)
+# Disaster GAN - Satellite Image Generation and Damage Assessment
 
-This repository contains the Variational Autoencoder (VAE) component of my disaster assessment pipeline, developed for the CS4990 Generative AI Miniproject.
+Generative AI pipeline for xBD disaster imagery with three stages:
 
-## Project Overview
+1. Phase 1 trains a GAN to generate realistic pre-disaster satellite images.
+2. Phase 2 trains a conditional GAN to translate pre-disaster scenes into post-disaster scenes.
+3. Phase 3 trains a Siamese U-Net Transformer to localize buildings and classify damage.
 
-The objective of this miniproject is to leverage a Large Vision Model (LVM) to learn rich, conceptual representations of post-disaster satellite/aerial imagery. I utilize the [LADI v2 Dataset](https://huggingface.co/datasets/MITLL/LADI-v2-dataset) (Low Altitude Disaster Imagery).
+## Repository Layout
 
-To fulfill the LVM requirements of the assignment, this specific repository focuses purely on the **Variational Autoencoder (VAE)**. The VAE is designed to ingest raw aerial imagery and compress it into a continuous 256-dimensional latent space. By training the model to reconstruct the images from this compressed bottleneck, the VAE inherently learns fundamental, high-level features about the disaster scenes (e.g., the presence of water, damaged structures, and debris).
+Disaster Model GAN/
+|-- configs/
+|   `-- config.yaml
+|-- checkpoints/
+|   |-- pre_gan/
+|   |-- post_gan/
+|   `-- damage/
+|-- data/
+|   `-- xbd/
+|-- outputs/
+|-- src/
+|   |-- data/
+|   |   `-- datasets.py
+|   |-- models/
+|   |   |-- damage_assessment.py
+|   |   `-- gan.py
+|   |-- utils/
+|   |   `-- metrics.py
+|   |-- generate.py
+|   |-- generate_and_assess.py
+|   `-- train.py
+|-- Siamese U-Net Transformer/
+|   |-- model_siamese.py
+|   |-- assess_siamese.py
+|   |-- train_siamese.py
+|   `-- test_siamese.py
+|-- requirements.txt
+`-- README(1).md
 
-*Note: The subsequent stages of this pipeline (e.g., training a downstream multi-label classifier on the VAE's latent variables) are reserved for the final project implementation.*
+## Installation
 
-## Environment Setup
+Install dependencies:
 
-This project uses `conda` to manage dependencies. An RTX 4090 GPU (or equivalent) is recommended for training.
+pip install -r requirements.txt
 
-1. Clone this repository.
-2. Create and activate the conda environment:
-   ```bash
-   conda create -n ladi python=3.10
-   conda activate ladi
-   ```
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+## Dataset
 
-## Running the VAE
+The project expects the xBD dataset at:
 
-The dataset is automatically downloaded and cached natively using Hugging Face datasets and pandas.
+data/xbd/
+  train/
+    images/
+    labels/
+  test/
+    images/
+    labels/
 
-To begin training the VAE (defaults to 150 epochs, saving checkpoints every 50 epochs):
+Update `data.xbd_root` in `configs/config.yaml` if needed.
 
-```bash
-python train_vae.py
-```
+## Training Commands
 
-### MLOps Tracking
+### Train all phases
 
-This project heavily integrates **Weights & Biases (W&B)** for professional MLOps tracking. Before running the training script, ensure you are logged into your W&B account:
+python src/train.py --config configs/config.yaml --all
 
-```bash
-wandb login
-```
+### Train phase 1 only Pre Disaster GAN
 
-The script will automatically:
-1. Stream live training metrics (Mean Squared Error, KL Divergence) to your W&B cloud dashboard.
-2. Upload image reconstruction visualization grids per epoch to visually track the VAE's generative progress.
-3. Automatically upload the `.pth` model checkpoints to the W&B Artifacts model registry every 50 epochs.
-4. Trigger alerts if gradient explosion (NaN loss) is detected.
+python src/train.py --config configs/config.yaml --phase 1
+
+### Train phase 2 only Post-Disaster GAN
+
+python src/train.py --config configs/config.yaml --phase 2
+
+### Train phase 3 unified command
+
+python src/train.py --config configs/config.yaml --phase 3
+
+For Siamese specific interface with explicit override flags use:
+
+python "Siamese U-Net Transformer/train_siamese.py" --config configs/config.yaml --epochs 60 --batch-size 8 --lr 1e-4
+
+
+### Export xBD test pairs without assessment
+
+python src/generate_and_assess.py --config configs/config.yaml --xbd_test --num_samples 4
+
+## Assessment Commands
+
+### Assess a real pre/post pair
+
+python "Siamese U-Net Transformer/assess_siamese.py" --config configs/config.yaml --checkpoint checkpoints/damage/best.pt --pre_image data/noaa/pre.png --post_image data/noaa/post.png --tta
+
+
+### Assess xBD test samples
+
+python "Siamese U-Net Transformer/assess_siamese.py" --config configs/config.yaml --checkpoint checkpoints/damage/best.pt --xbd_test --num_samples 8 --output outputs/siamese_assessment --tta
+
+### Generate GAN pairs and assess them directly
+
+python "Siamese U-Net Transformer/assess_siamese.py" --config configs/config.yaml --checkpoint checkpoints/damage/best.pt --gan_generated --disaster hurricane --num_samples 4 --output outputs/siamese_gan_assessment --tta
+
+
+## Output Artifacts
+
+### GAN generation
+
+- pre-disaster image PNG
+- post-disaster image PNG
+- side-by-side pair preview PNG
+
+### Siamese assessment
+
+- `<sample>_assessment.png`
+- `<sample>_report.txt`
+
+The assessment report includes:
+
+- SDI
+- total and affected area
+- class-wise area breakdown
+- mean IoU
+- combined F1
+- NDI change
+- change magnitude
+
+## Performance Notes
+
+Hardware tuned @:
+
+- GPU: RTX 2070 Super
+- CPU: i7-9700K @ 4.6 GHz
+- RAM: 32 GB DDR4 3000 MHz
+
+Enabled optimizations include:
+
+- AMP mixed precision on CUDA
+- cuDNN benchmark mode
+- fused AdamW on CUDA
+- `pin_memory=True`
+- persistent dataloader workers
+- non-blocking host-to-device transfers
+- channels-last memory format for CUDA models
+
+## Typical Workflow
+
+1. Train GANs with `src/train.py`.
+2. Train the damage model with `src/train.py --phase 3`.
+3. Generate pairs with `src/generate_and_assess.py`.
+4. Assess damage with `Siamese U-Net Transformer/assess_siamese.py`.
+5. If you want the transformer to score GAN outputs directly, use `--gan_generated`.
